@@ -9,6 +9,7 @@
                     <button type="button" class="icon-btn" data-action="togglePlayback" title="Play/Pause" {{#unless ../isGM}}disabled{{/unless}}><i class="fas fa-play"></i></button>
                     <button type="button" class="icon-btn" data-action="playNext" title="Next" {{#unless ../isGM}}disabled{{/unless}}><i class="fas fa-step-forward"></i></button>
                     <button type="button" class="icon-btn {{#if this.isLooping}}active{{/if}}" data-action="toggleLoop" title="Loop" {{#unless ../isGM}}disabled{{/unless}}><i class="fas fa-repeat"></i></button>
+                    <button type="button" class="icon-btn {{#if this.isShuffling}}active{{/if}}" data-action="toggleShuffle" title="Shuffle" {{#unless ../isGM}}disabled{{/unless}}><i class="fas fa-shuffle"></i></button>
                 </div>
 
                 <div class="center-controls">
