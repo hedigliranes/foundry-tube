@@ -15,7 +15,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         this.players = [null, null, null, null, null];
         this.activeTab = 0;
         this.tabsState = Array(5).fill(null).map(() => ({
-            playlist: [], currentIndex: -1, localVideoId: "", isLooping: false, isInputMode: false, loaded: false
+            playlist: [], currentIndex: -1, localVideoId: "", isLooping: false, isShuffling: false, isInputMode: false, loaded: false
         }));
         this.isCustomMinimized = false;
         this.savedHeight = 360;
@@ -34,6 +34,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         actions: {
             togglePlayback: FoundryTubeApp.prototype._onTogglePlayback,
             toggleLoop: FoundryTubeApp.prototype._onToggleLoop,
+            toggleShuffle: FoundryTubeApp.prototype._onToggleShuffle,
             toggleInputMode: FoundryTubeApp.prototype._onToggleInputMode,
             executeSmartInput: FoundryTubeApp.prototype._onExecuteSmartInput,
             toggleQueue: FoundryTubeApp.prototype._onToggleQueue,
@@ -89,12 +90,13 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
                 this.tabsState[i].currentIndex = s.currentIndex ?? -1;
                 this.tabsState[i].localVideoId = s.videoId || "";
                 this.tabsState[i].isLooping = s.isLooping || false;
+                this.tabsState[i].isShuffling = s.isShuffling || false;
                 this.tabsState[i].loaded = true;
             }
             tabsData.push({
                 index: i, humanIndex: i + 1, isActive: (i === this.activeTab),
                           title: this.tabsState[i].playlist[this.tabsState[i].currentIndex]?.title || "No Video",
-                          volume: volume, isLooping: this.tabsState[i].isLooping
+                          volume: volume, isLooping: this.tabsState[i].isLooping, isShuffling: this.tabsState[i].isShuffling
             });
         }
         return { isGM: game.user.isGM, savedPlaylists, tabs: tabsData };
@@ -203,6 +205,8 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
                             const prevBtn = container.querySelector('[data-action="playPrev"]');
                             const loopBtn = container.querySelector('[data-action="toggleLoop"]');
                             if (loopBtn) loopBtn.style.display = 'none';
+                            const shuffleBtn = container.querySelector('[data-action="toggleShuffle"]')
+                            if (shuffleBtn) shuffleBtn.display = 'none';
                             const nextBtn = container.querySelector('[data-action="playNext"]');
 
                             if (prevBtn) prevBtn.style.display = 'none';
@@ -248,8 +252,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     async playNext(tab) {
-        if (this.tabsState[tab].currentIndex + 1 >= this.tabsState[tab].playlist.length) return;
-        this.tabsState[tab].currentIndex++;
+        if (!this.tryAdvanceTrackIndex(tab)) return;
         await this._syncPlaylistState(tab);
         const v = this.tabsState[tab].playlist[this.tabsState[tab].currentIndex];
         this.broadcastState(tab, v.id, 0, true);
@@ -265,10 +268,36 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         this.updateTrackTitle(tab, v.title);
     }
 
+    tryAdvanceTrackIndex(tab) {
+        const playlistLength = this.tabsState[tab].playlist.length;
+        const currentIndex = this.tabsState[tab].currentIndex;
+
+        if (this.tabsState[tab].isShuffling) {
+            if (playlistLength <= 2) {
+                // List is too short, just play the next track, looping from start
+                this.tabsState[tab].currentIndex = (currentIndex + 1 % playlistLength);
+                return true;
+            }
+
+            // Advance the index by a random number lower than track count - 1, so we don't loop back to the same track
+            const advanceBy = Math.floor(Math.random() * playlistLength - 1)
+            this.tabsState[tab].currentIndex = (currentIndex + advanceBy) % playlistLength;
+            return true;
+        }
+        else {
+            if (currentIndex + 1 >= playlistLength) {
+                return false;
+            } 
+            
+            this.tabsState[tab].currentIndex++;
+            return true;
+        }
+    }
+
     broadcastState(tab, videoId, time=0, isPlaying=true) {
         this.loadVideo(tab, videoId);
         setTimeout(() => { if(this.players[tab]?.playVideo && isPlaying) this.players[tab].playVideo(); }, 800);
-        this.emitSocket(null, { action: "syncState", tabId: tab, videoId, time, isPlaying, isLooping: this.tabsState[tab].isLooping });
+        this.emitSocket(null, { action: "syncState", tabId: tab, videoId, time, isPlaying, isLooping: this.tabsState[tab].isLooping, isShuffling: this.tabsState[tab].isShuffling });
     }
 
     loadVideo(tab, videoId) {
@@ -310,6 +339,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     _onTogglePlayback() { this.togglePlayback(this.activeTab); }
     _onToggleLoop(e, t) { this.toggleLoop(this.activeTab, t); }
+    _onToggleShuffle(e, t) { this.toggleShuffle(this.activeTab, t); }
     _onToggleInputMode(e, t) { this.toggleInputMode(this.activeTab, t); }
     _onExecuteSmartInput(e, t, forced) { this.executeSmartInput(forced ?? this.activeTab); }
     _onToggleQueue(e, t) {
@@ -351,6 +381,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     _onImportFromClipboard() { const tab=this.activeTab; new Dialog({title:"Import", content:`<form><div class="form-group"><label>URL</label><input type="text" name="url" style="background:#fff;color:#000"/></div></form>`, buttons:{import:{label:"Import", callback:async(h)=>{const u=h.find('input').val().trim(); await this._handleImport(tab, u);}}}}).render(true); }
 
     toggleLoop(tab, target) { this.tabsState[tab].isLooping = !this.tabsState[tab].isLooping; if(target) target.classList.toggle('active'); this.emitSocket("syncLoop", {isLooping: this.tabsState[tab].isLooping, tabId:tab}); }
+    toggleShuffle(tab, target) { this.tabsState[tab].isShuffling = !this.tabsState[tab].isShuffling; if(target) target.classList.toggle('active'); this.emitSocket("syncShuffle", {isShuffling: this.tabsState[tab].isShuffling, tabId:tab}); }
     toggleInputMode(tab, btn) {
         this.tabsState[tab].isInputMode = !this.tabsState[tab].isInputMode;
 
@@ -395,7 +426,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     async _syncPlaylistState(tab) {
         if(game.user.isGM) {
             const globalState = game.settings.get(MODULE_ID, 'tabsState') || {};
-            globalState[tab] = { playlist: this.tabsState[tab].playlist, currentIndex: this.tabsState[tab].currentIndex, videoId: (this.tabsState[tab].playlist[this.tabsState[tab].currentIndex]||{}).id||"", isLooping: this.tabsState[tab].isLooping };
+            globalState[tab] = { playlist: this.tabsState[tab].playlist, currentIndex: this.tabsState[tab].currentIndex, videoId: (this.tabsState[tab].playlist[this.tabsState[tab].currentIndex]||{}).id||"", isLooping: this.tabsState[tab].isLooping, isShuffling: this.tabsState[tab].isShuffling };
             await game.settings.set(MODULE_ID, 'tabsState', globalState);
             this.emitSocket("syncPlaylist", { tabId: tab, playlist: this.tabsState[tab].playlist, index: this.tabsState[tab].currentIndex });
         }
@@ -791,6 +822,11 @@ Hooks.once('ready', () => {
                 const btn = tubeApp.element.querySelector(`.tube-instance[data-tab-index="${tab}"] [data-action="toggleLoop"]`);
                 if(btn) p.isLooping ? btn.classList.add('active') : btn.classList.remove('active');
             }
+            else if (p.action === "syncShuffle") {
+                tubeApp.tabsState[tab].isShuffling = p.isShuffling;
+                const btn = tubeApp.element.querySelector(`.tube-instance[data-tab-index="${tab}"] [data-action="toggleShuffle"]`);
+                if(btn) p.isLooping ? btn.classList.add('active') : btn.classList.remove('active');
+            }
             else if (p.action === "syncState") {
                 if (p.videoId !== tubeApp.tabsState[tab].localVideoId) {
                     tubeApp.loadVideo(tab, p.videoId);
@@ -842,11 +878,13 @@ Hooks.once('ready', () => {
                         time: currentTime,
                         isPlaying: isPlaying,
                         isLooping: tubeApp.tabsState[i].isLooping,
+                        isShuffling: tubeApp.tabsState[i].isShuffling,
                         sentAt: Date.now()
                     });
 
                     game.socket.emit(SOCKET_NAME, { action: "syncPlaylist", tabId: i, playlist: tubeApp.tabsState[i].playlist, index: tubeApp.tabsState[i].currentIndex });
                     game.socket.emit(SOCKET_NAME, { action: "syncLoop", tabId: i, isLooping: tubeApp.tabsState[i].isLooping });
+                    game.socket.emit(SOCKET_NAME, { action: "syncShuffle", tabId: i, isShuffling: tubeApp.tabsState[i].isShuffling });
                 }
             }
         });
