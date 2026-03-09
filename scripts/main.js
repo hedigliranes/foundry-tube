@@ -47,8 +47,8 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
             deletePreset: FoundryTubeApp.prototype._onDeletePreset,
             importFromClipboard: FoundryTubeApp.prototype._onImportFromClipboard,
             switchTab: FoundryTubeApp.prototype._onSwitchTab,
-            manualSync: FoundryTubeApp.prototype._onManualSync,
-            toggleMute: FoundryTubeApp.prototype._onToggleMute
+                manualSync: FoundryTubeApp.prototype._onManualSync,
+                toggleMute: FoundryTubeApp.prototype._onToggleMute
         }
     };
 
@@ -134,7 +134,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
             const vol = game.settings.get(MODULE_ID, 'clientVolume');
             if (vol === 0) this.isMuted = true;
             this.element.querySelectorAll('.volume-mute-btn i').forEach(icon => {
-                 icon.className = (vol === 0) ? "fas fa-volume-mute" : "fas fa-volume-up";
+                icon.className = (vol === 0) ? "fas fa-volume-mute" : "fas fa-volume-up";
             });
 
             for(let i=0; i<5; i++) {
@@ -164,8 +164,8 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
                         const val = parseInt(e.target.value);
                         if (this.players[i]?.setVolume) this.players[i].setVolume(val);
                         if (val > 0 && this.isMuted) {
-                             this.isMuted = false;
-                             this.element.querySelectorAll('.volume-mute-btn i').forEach(ic => ic.className = "fas fa-volume-up");
+                            this.isMuted = false;
+                            this.element.querySelectorAll('.volume-mute-btn i').forEach(ic => ic.className = "fas fa-volume-up");
                         }
                     };
                     volInput.onchange = async (e) => { await game.settings.set(MODULE_ID, 'clientVolume', parseInt(e.target.value)); };
@@ -287,8 +287,8 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         else {
             if (currentIndex + 1 >= playlistLength) {
                 return false;
-            } 
-            
+            }
+
             this.tabsState[tab].currentIndex++;
             return true;
         }
@@ -330,11 +330,11 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
             if (btnTarget === idx) btn.classList.add('active');
             else btn.classList.remove('active');
         });
-        const el = this.element.querySelector(`#track-title-text-${idx}`);
-        if (el) {
-            const span = el.querySelector('span');
-            if (span) this.updateTrackTitle(idx, span.innerText);
-        }
+            const el = this.element.querySelector(`#track-title-text-${idx}`);
+            if (el) {
+                const span = el.querySelector('span');
+                if (span) this.updateTrackTitle(idx, span.innerText);
+            }
     }
 
     _onTogglePlayback() { this.togglePlayback(this.activeTab); }
@@ -351,7 +351,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     _onPlayPrevAction() { this.playPrev(this.activeTab); }
     async _onToggleMute(event, target) {
         const currentVol = game.settings.get(MODULE_ID, 'clientVolume');
-        
+
         if (this.isMuted) {
             this.isMuted = false;
             const newVol = this.preMuteVolume || 50;
@@ -361,11 +361,11 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
             this.isMuted = true;
             await game.settings.set(MODULE_ID, 'clientVolume', 0);
         }
-        
+
         const vol = game.settings.get(MODULE_ID, 'clientVolume');
         this.element.querySelectorAll('input[name="volume"]').forEach(i => i.value = vol);
         this.players.forEach(p => { if (p?.setVolume) p.setVolume(vol); });
-        
+
         this.element.querySelectorAll('.volume-mute-btn i').forEach(icon => {
             icon.className = this.isMuted ? "fas fa-volume-mute" : "fas fa-volume-up";
         });
