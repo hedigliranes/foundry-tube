@@ -1,4 +1,6 @@
-#foundry-tube-app.window-app {
+/* V1 frames used .window-app; ApplicationV2 frames (V13/V14) use .application. */
+#foundry-tube-app.window-app,
+#foundry-tube-app.application {
 background: #050505 !important;
 border: 1px solid #333 !important;
 box-shadow: 0 10px 30px rgba(0,0,0,0.95) !important;
@@ -28,7 +30,9 @@ overflow: hidden !important;
 #foundry-tube-app .window-header:active { cursor: grabbing !important; background: #1a1a1a !important; opacity: 1 !important; }
 #foundry-tube-app .window-header * { display: none !important; }
 
-#foundry-tube-app .window-resizable-handle {
+/* V14 renamed the V1 .window-resizable-handle to .window-resize-handle. */
+#foundry-tube-app .window-resizable-handle,
+#foundry-tube-app .window-resize-handle {
 bottom: 0 !important;
 right: 0 !important;
 color: #666 !important;
