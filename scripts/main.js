@@ -1,6 +1,37 @@
 const MODULE_ID = 'foundry-tube';
 const SOCKET_NAME = `module.${MODULE_ID}`;
-const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
+
+/**
+ * V14 removes the jQuery-based ApplicationV1 dialogs, so every prompt goes through
+ * DialogV2. These helpers keep the call sites short and read values straight off the
+ * dialog form instead of the old `html.find(...)` jQuery handle.
+ */
+async function tubeConfirm(title, content) {
+    return DialogV2.confirm({
+        window: { title },
+        content,
+        modal: true,
+        rejectClose: false
+    });
+}
+
+async function tubePrompt(title, label, fieldLabel, placeholder = "") {
+    return DialogV2.prompt({
+        window: { title },
+        content: `<div class="form-group"><label>${fieldLabel}</label>
+            <input type="text" name="value" placeholder="${placeholder}" autocomplete="off" autofocus/></div>`,
+        ok: {
+            label,
+            callback: (event, button, dialog) => {
+                const input = button.form?.elements.value
+                    ?? (dialog?.element ?? button.closest('form'))?.querySelector('input[name="value"]');
+                return input?.value.trim() ?? "";
+            }
+        },
+        rejectClose: false
+    });
+}
 
 const PROXIES = [
     (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
@@ -54,6 +85,13 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     static PARTS = { main: { template: `modules/${MODULE_ID}/templates/widget.hbs` } };
 
+    /**
+     * V14 adds native detach/pop-out to every ApplicationV2 header. Detaching re-parents the
+     * frame into a second document, which tears down the YouTube iframes and their YT.Player
+     * handles, so the widget stays attached to the main workspace.
+     */
+    _canDetach() { return false; }
+
     async minimize() {
         this.isCustomMinimized = !this.isCustomMinimized;
         if (this.isCustomMinimized) {
@@ -104,13 +142,10 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     _onRender(context, options) {
         try {
-            const appHeader = this.element.closest('.window-app')?.querySelector('.window-header');
-            if (appHeader) {
-                const newHeader = appHeader.cloneNode(true);
-                appHeader.parentNode.replaceChild(newHeader, appHeader);
-                newHeader.addEventListener('dblclick', (e) => { e.preventDefault(); e.stopPropagation(); this.minimize(); });
-                const t = newHeader.querySelector('.window-title'); if(t) t.innerText = "";
-            }
+            // Double-click-to-minimize is already covered: ApplicationV2's header dblclick handler
+            // calls this.minimize(), which this class overrides with the custom collapse. The old
+            // V1-era code here cloned and replaced .window-header, which under V14 would strip the
+            // core drag, close and detach listeners bound to that node.
 
             if (!this._resizeObserver) {
                 this._resizeObserver = new ResizeObserver((entries) => {
@@ -346,7 +381,14 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         const o=this.element.querySelector(`#queue-overlay-${this.activeTab}`), s=this.element.querySelector(`#search-overlay-${this.activeTab}`);
         if(o){ o.classList.toggle('hidden'); if(s) s.classList.add('hidden'); t.classList.toggle('active'); }
     }
-    _onClearQueue() { Dialog.confirm({ title: "Clear Playlist", content: "<p>Clear playlist?</p>", yes: () => { this.tabsState[this.activeTab].playlist=[]; this.tabsState[this.activeTab].currentIndex=-1; this._syncPlaylistState(this.activeTab); this.updateTrackTitle(this.activeTab, "No Video"); }}); }
+    async _onClearQueue() {
+        const tab = this.activeTab;
+        if (!await tubeConfirm("Clear Playlist", "<div><p>Clear playlist?</p></div>")) return;
+        this.tabsState[tab].playlist = [];
+        this.tabsState[tab].currentIndex = -1;
+        await this._syncPlaylistState(tab);
+        this.updateTrackTitle(tab, "No Video");
+    }
     _onPlayNextAction() { this.playNext(this.activeTab); }
     _onPlayPrevAction() { this.playPrev(this.activeTab); }
     async _onToggleMute(event, target) {
@@ -375,10 +417,24 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         this.emitSocket("requestSync", { tabId: this.activeTab });
     }
     _onCloseSearch() { this.element.querySelector(`#search-overlay-${this.activeTab}`)?.classList.add('hidden'); }
-    _onSavePreset() { const tab=this.activeTab; if(this.tabsState[tab].playlist.length===0) return ui.notifications.warn("Queue empty"); new Dialog({title:"Save", content:`<form><div class="form-group"><label>Name</label><input type="text" name="name" style="background:#fff;color:#000"/></div></form>`, buttons:{save:{label:"Save", callback:async(h)=>{const n=h.find('input').val().trim(); if(!n)return; const s=game.settings.get(MODULE_ID,'savedPlaylists'); s[n]=this.tabsState[tab].playlist; await game.settings.set(MODULE_ID,'savedPlaylists',s); this.render();}}}}).render(true); }
+    async _onSavePreset() {
+        const tab = this.activeTab;
+        if (this.tabsState[tab].playlist.length === 0) return ui.notifications.warn("Queue empty");
+        const name = await tubePrompt("Save Preset", "Save", "Name");
+        if (!name) return;
+        const saved = game.settings.get(MODULE_ID, 'savedPlaylists');
+        saved[name] = this.tabsState[tab].playlist;
+        await game.settings.set(MODULE_ID, 'savedPlaylists', saved);
+        this.render();
+    }
     async _onLoadPreset() { const tab=this.activeTab, s=this.element.querySelector(`.preset-select[data-tab="${tab}"]`), n=s.value, sv=game.settings.get(MODULE_ID,'savedPlaylists'); if(sv[n]) { this.tabsState[tab].playlist=[...sv[n]]; this.tabsState[tab].currentIndex=0; await this._syncPlaylistState(tab); if(this.tabsState[tab].playlist.length>0) { this.broadcastState(tab, this.tabsState[tab].playlist[0].id, 0, true); this.updateTrackTitle(tab, this.tabsState[tab].playlist[0].title); } } }
     async _onDeletePreset() { const tab=this.activeTab, s=this.element.querySelector(`.preset-select[data-tab="${tab}"]`), n=s.value; if(!n)return; const sv=game.settings.get(MODULE_ID,'savedPlaylists'); delete sv[n]; await game.settings.set(MODULE_ID,'savedPlaylists',sv); this.render(); }
-    _onImportFromClipboard() { const tab=this.activeTab; new Dialog({title:"Import", content:`<form><div class="form-group"><label>URL</label><input type="text" name="url" style="background:#fff;color:#000"/></div></form>`, buttons:{import:{label:"Import", callback:async(h)=>{const u=h.find('input').val().trim(); await this._handleImport(tab, u);}}}}).render(true); }
+    async _onImportFromClipboard() {
+        const tab = this.activeTab;
+        const url = await tubePrompt("Import", "Import", "URL", "https://www.youtube.com/playlist?list=...");
+        if (!url) return;
+        await this._handleImport(tab, url);
+    }
 
     toggleLoop(tab, target) { this.tabsState[tab].isLooping = !this.tabsState[tab].isLooping; if(target) target.classList.toggle('active'); this.emitSocket("syncLoop", {isLooping: this.tabsState[tab].isLooping, tabId:tab}); }
     toggleShuffle(tab, target) { this.tabsState[tab].isShuffling = !this.tabsState[tab].isShuffling; if(target) target.classList.toggle('active'); this.emitSocket("syncShuffle", {isShuffling: this.tabsState[tab].isShuffling, tabId:tab}); }
@@ -914,17 +970,27 @@ Hooks.on('getSceneControlButtons', (controls) => {
         }
     };
 
+    // V13+ passes a record of controls keyed by name, each with a record of tools.
+    // V12 passed an array of controls with an array of tools; both shapes are handled.
     if (Array.isArray(controls)) {
-        const token = controls.find(c => c.name === 'token');
-        if (token) token.tools.push(toolConfig);
-    } else {
-        const tokenLayer = controls.token || controls.tokens;
-        if (tokenLayer) {
-            if (Array.isArray(tokenLayer.tools)) {
-                tokenLayer.tools.push(toolConfig);
-            } else {
-                tokenLayer.tools["tube-toggle"] = toolConfig;
-            }
+        const token = controls.find(c => c.name === 'token' || c.name === 'tokens');
+        if (token) {
+            token.tools ??= [];
+            token.tools.push(toolConfig);
         }
+        return;
+    }
+
+    const tokenLayer = controls.tokens ?? controls.token;
+    if (!tokenLayer) return;
+
+    // V14 allows a control layer to carry no tools at all, so never assume the collection exists.
+    if (Array.isArray(tokenLayer.tools)) {
+        tokenLayer.tools.push(toolConfig);
+    } else {
+        tokenLayer.tools ??= {};
+        // Tools in the record form are sorted by `order`; append after whatever is already there.
+        toolConfig.order = Object.keys(tokenLayer.tools).length;
+        tokenLayer.tools["tube-toggle"] = toolConfig;
     }
 });

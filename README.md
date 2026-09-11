@@ -1,4 +1,4 @@
-![Downloads](https://img.shields.io/github/downloads/shradee/foundry-tube/total)
+![Downloads](https://img.shields.io/github/downloads/hedigliranes/foundry-tube/total)
 
 [![Support modules I create on](https://img.shields.io/badge/Support_modules_I_create_on-Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/shrade_himself)
 
@@ -26,7 +26,7 @@ Foundry Tube allows GMs to play music, ambience, or videos from YouTube directly
 
 ## Installation
 
-1.  Copy the Manifest URL: `https://github.com/shradee/foundry-tube/releases/latest/download/module.json`
+1.  Copy the Manifest URL: `https://github.com/hedigliranes/foundry-tube/releases/latest/download/module.json`
 2.  Open Foundry VTT -> **Add-on Modules** -> **Install Module**.
 3.  Paste the URL and click **Install**.
 
