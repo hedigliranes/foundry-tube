@@ -14,6 +14,10 @@ transition: height 0.1s ease-out !important;
 overflow: hidden !important;
 }
 
+/* The rule above forces display with !important, which an inline style.display cannot
+   override, so visibility is toggled with this class instead. Must stay after it. */
+#foundry-tube-app.tube-hidden { display: none !important; }
+
 #foundry-tube-app .window-header {
 flex: 0 0 10px !important;
 height: 10px !important;
