@@ -92,6 +92,20 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
      */
     _canDetach() { return false; }
 
+    /**
+     * Visibility runs through a class, not element.style.display: the stylesheet pins the
+     * frame with `display: flex !important`, which an inline display would lose against.
+     */
+    get isHidden() { return this.element?.classList.contains('tube-hidden') ?? false; }
+
+    setHidden(hidden) { this.element?.classList.toggle('tube-hidden', hidden); }
+
+    toggleHidden() {
+        if (!this.element) return this.render({ force: true });
+        this.setHidden(!this.isHidden);
+        if (!this.isHidden) this.bringToFront();
+    }
+
     async minimize() {
         this.isCustomMinimized = !this.isCustomMinimized;
         if (this.isCustomMinimized) {
@@ -150,7 +164,7 @@ class FoundryTubeApp extends HandlebarsApplicationMixin(ApplicationV2) {
             if (!this._resizeObserver) {
                 this._resizeObserver = new ResizeObserver((entries) => {
                     for (const entry of entries) {
-                        if (entry.contentRect.width > 50 && this.element.style.display !== 'none') {
+                        if (entry.contentRect.width > 50 && !this.isHidden) {
                             this.savedWidth = entry.contentRect.width;
                             this.position.width = entry.contentRect.width;
 
@@ -858,7 +872,7 @@ Hooks.once('ready', () => {
 
     setTimeout(async () => {
         await tubeApp.render({ force: true });
-        if (game.settings.get(MODULE_ID, 'hideOnStartup') && tubeApp.element) tubeApp.element.style.display = 'none';
+        if (game.settings.get(MODULE_ID, 'hideOnStartup')) tubeApp.setHidden(true);
     }, 1000);
 
         game.socket.on(SOCKET_NAME, (p) => {
@@ -952,22 +966,7 @@ Hooks.on('getSceneControlButtons', (controls) => {
         icon: "fas fa-tv",
         visible: true,
         button: true,
-        onChange: () => {
-            const app = window.tubeApp;
-            if (!app) return;
-
-            if (!app.element) {
-                app.render({ force: true });
-                return;
-            }
-
-            if (app.element.style.display === "none") {
-                app.element.style.display = "";
-                app.bringToFront();
-            } else {
-                app.element.style.display = "none";
-            }
-        }
+        onChange: () => window.tubeApp?.toggleHidden()
     };
 
     // V13+ passes a record of controls keyed by name, each with a record of tools.
